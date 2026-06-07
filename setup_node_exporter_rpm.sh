@@ -2,7 +2,7 @@
 set -e
 
 # ─────────────────────────────────────────
-#  Prompt for version
+#  Prompt for version and architecture
 # ─────────────────────────────────────────
 read -rp "Enter node_exporter version (e.g. 1.11.1): " VERSION
 
@@ -11,33 +11,53 @@ if [[ -z "$VERSION" ]]; then
     exit 1
 fi
 
-ARCH="amd64"
+echo ""
+echo "Select architecture:"
+echo "  1) amd64   (x86_64)"
+echo "  2) arm64   (aarch64)"
+read -rp "Enter choice [1/2]: " ARCH_CHOICE
+
+case "$ARCH_CHOICE" in
+    1)
+        TARBALL_ARCH="amd64"
+        RPM_ARCH="x86_64"
+        ;;
+    2)
+        TARBALL_ARCH="arm64"
+        RPM_ARCH="aarch64"
+        ;;
+    *)
+        echo "ERROR: Invalid choice. Enter 1 or 2."
+        exit 1
+        ;;
+esac
+
 NAME="node_exporter"
-TARBALL="${NAME}-${VERSION}.linux-${ARCH}.tar.gz"
+TARBALL="${NAME}-${VERSION}.linux-${TARBALL_ARCH}.tar.gz"
 URL="https://github.com/prometheus/${NAME}/releases/download/v${VERSION}/${TARBALL}"
 DATE=$(date +"%a %b %d %Y")
 
 # ─────────────────────────────────────────
-#  Version-specific repo folder
-#  (sits next to this script)
+#  Version + arch specific repo folder
 # ─────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION_DIR="${SCRIPT_DIR}/${VERSION}"
+VERSION_DIR="${SCRIPT_DIR}/${VERSION}/${TARBALL_ARCH}"
 
 # ─────────────────────────────────────────
-#  rpmbuild dirs (standard, shared)
+#  rpmbuild dirs
 # ─────────────────────────────────────────
 RPMBUILD_DIR="${HOME}/rpmbuild"
 
 echo ""
 echo "  Version    : ${VERSION}"
+echo "  Architecture: ${TARBALL_ARCH} (RPM: ${RPM_ARCH})"
 echo "  Repo folder: ${VERSION_DIR}"
 echo "  Tarball    : ${TARBALL}"
 echo "  URL        : ${URL}"
 echo ""
 
 # ─────────────────────────────────────────
-#  1. Create version folder in repo
+#  1. Create version/arch folder in repo
 # ─────────────────────────────────────────
 if [[ -d "${VERSION_DIR}" ]]; then
     echo "WARNING: Folder ${VERSION_DIR} already exists. Overwriting files inside."
@@ -74,10 +94,9 @@ Release:        1%{?dist}
 Summary:        Prometheus exporter for hardware and OS metrics
 License:        Apache License 2.0
 URL:            https://github.com/prometheus/node_exporter
-Source0:        %{name}-%{version}.linux-amd64.tar.gz
+Source0:        %{name}-%{version}.linux-${TARBALL_ARCH}.tar.gz
 Source1:        node_exporter.service
 
-BuildArch:      x86_64
 Requires:       systemd
 
 %global debug_package %{nil}
@@ -86,14 +105,14 @@ Requires:       systemd
 The Prometheus node_exporter exposes hardware and OS metrics from *NIX systems. It is used to gather system statistics for monitoring purposes.
 
 %prep
-%setup -q -n %{name}-%{version}.linux-amd64
+%setup -q -n %{name}-%{version}.linux-${TARBALL_ARCH}
 
 %build
 # No build required, binaries are already compiled
 
 %install
 # Install the binary
-install -D -m 0755 %{_builddir}/%{name}-%{version}.linux-amd64/node_exporter %{buildroot}/usr/local/bin/node_exporter
+install -D -m 0755 %{_builddir}/%{name}-%{version}.linux-${TARBALL_ARCH}/node_exporter %{buildroot}/usr/local/bin/node_exporter
 
 # Install the systemd service file
 install -D -m 0644 %{SOURCE1} %{buildroot}/usr/lib/systemd/system/node_exporter.service
@@ -122,12 +141,12 @@ fi
 
 %changelog
 * ${DATE} Your Name <mithuneeecu@gmail.com> - ${VERSION}-1
-- RPM build for node_exporter ${VERSION}
+- RPM build for node_exporter ${VERSION} (${RPM_ARCH})
 EOF
 echo "[3/5] node_exporter.spec created."
 
 # ─────────────────────────────────────────
-#  4. Download tarball into version folder
+#  4. Download tarball into version/arch folder
 #     + copy files to rpmbuild SOURCES/SPECS
 # ─────────────────────────────────────────
 mkdir -p "${RPMBUILD_DIR}"/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
@@ -137,20 +156,20 @@ wget -q --show-progress -P "${VERSION_DIR}/" "${URL}"
 echo "      Download complete."
 
 # Sync to rpmbuild working dirs
-cp "${VERSION_DIR}/${TARBALL}"              "${RPMBUILD_DIR}/SOURCES/"
-cp "${VERSION_DIR}/node_exporter.service"  "${RPMBUILD_DIR}/SOURCES/"
-cp "${VERSION_DIR}/node_exporter.spec"     "${RPMBUILD_DIR}/SPECS/"
+cp "${VERSION_DIR}/${TARBALL}"             "${RPMBUILD_DIR}/SOURCES/"
+cp "${VERSION_DIR}/node_exporter.service" "${RPMBUILD_DIR}/SOURCES/"
+cp "${VERSION_DIR}/node_exporter.spec"    "${RPMBUILD_DIR}/SPECS/"
 
 # ─────────────────────────────────────────
-#  5. Build RPM → copy output to version folder
+#  5. Build RPM → copy output to version/arch folder
 # ─────────────────────────────────────────
 echo "[5/5] Building RPM..."
-rpmbuild -ba "${RPMBUILD_DIR}/SPECS/node_exporter.spec"
+rpmbuild -ba --target ${RPM_ARCH} "${RPMBUILD_DIR}/SPECS/node_exporter.spec"
 
 RPM_FILE=$(find "${RPMBUILD_DIR}/RPMS/" -name "node_exporter-${VERSION}*.rpm" | head -1)
 cp "${RPM_FILE}" "${VERSION_DIR}/"
 
 echo ""
-echo "All files for v${VERSION} are in: ${VERSION_DIR}"
+echo "All files for v${VERSION} (${RPM_ARCH}) are in: ${VERSION_DIR}"
 echo ""
 ls -1 "${VERSION_DIR}"
