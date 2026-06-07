@@ -1,3 +1,4 @@
 *.tar.gz
+*.rpm
 Dockerfile
 setup_node_exporter_rpm.sh
