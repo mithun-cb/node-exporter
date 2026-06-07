@@ -1,3 +1,5 @@
+%define _rpmfilename %%{NAME}-%%{VERSION}-%%{RELEASE}.x86_64.rpm
+
 Name:           node_exporter
 Version:        1.10.2
 Release:        1%{?dist}
@@ -7,6 +9,7 @@ URL:            https://github.com/prometheus/node_exporter
 Source0:        %{name}-%{version}.linux-amd64.tar.gz
 Source1:        node_exporter.service
 
+AutoReqProv:    no
 Requires:       systemd
 
 %global debug_package %{nil}
